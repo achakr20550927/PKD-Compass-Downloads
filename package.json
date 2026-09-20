@@ -1,6 +1,6 @@
 {
   "name": "pkd-compass-desktop",
-  "version": "1.0.0-preview.1",
+  "version": "1.0.0-preview.2",
   "private": true,
   "description": "PKD Compass standalone encrypted local health journal",
   "author": "PKD Compass",

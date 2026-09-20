@@ -74,5 +74,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload v1.0.0-preview.1 release/*.dmg release/*.exe release/SHA256SUMS.txt --clobber
-          gh release edit v1.0.0-preview.1 --draft=false --prerelease --latest=false
+          gh release upload v1.0.0-preview.2 release/*.dmg release/*.exe release/SHA256SUMS.txt --clobber
+          gh release edit v1.0.0-preview.2 --draft=false --prerelease --latest=false
