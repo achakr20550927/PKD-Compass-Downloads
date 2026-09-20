@@ -1,0 +1,17 @@
+{
+  "name": "pkd-compass-desktop",
+  "version": "1.0.0-preview.1",
+  "private": true,
+  "description": "PKD Compass standalone encrypted local health journal",
+  "author": "PKD Compass",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "package:mac": "electron-builder --config desktop/electron-builder.cjs --mac --publish never",
+    "package:win": "electron-builder --config desktop/electron-builder.cjs --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "@electron/fuses": "2.1.2",
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  }
+}

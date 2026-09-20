@@ -1,0 +1,78 @@
+name: Package desktop preview
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - if: runner.os == 'macOS'
+        run: npm run package:mac
+      - if: runner.os == 'macOS'
+        name: Verify packaged Mac signatures and launch
+        run: |
+          codesign --verify --deep --strict 'release/mac-arm64/PKD Compass.app'
+          codesign --verify --deep --strict 'release/mac/PKD Compass.app'
+          if [ "$(uname -m)" = arm64 ]; then app='release/mac-arm64/PKD Compass.app'; else app='release/mac/PKD Compass.app'; fi
+          open "$app"
+          sleep 8
+          pgrep -f 'PKD Compass.app/Contents/MacOS/PKD Compass'
+      - if: runner.os == 'Windows'
+        run: npm run package:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - if: runner.os == 'Windows'
+        name: Install and launch Windows preview
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem release/*.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'PKDCompassInstalled'
+          $result = Start-Process $setup -ArgumentList @('/S', "/D=$dir") -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw 'Installer failed' }
+          $exe = Join-Path $dir 'PKD Compass.exe'
+          Start-Process $exe
+          Start-Sleep -Seconds 10
+          $window = Get-Process | Where-Object { $_.Path -eq $exe -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+          if (!$window -or !$window.Responding) { throw 'Installed app window unavailable' }
+          Write-Host "PASS: installed $($window.MainWindowTitle)"
+          $window.CloseMainWindow() | Out-Null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ runner.os }}
+          path: |
+            release/*.dmg
+            release/*.exe
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: release
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum *.dmg *.exe > SHA256SUMS.txt
+      - name: Publish explicitly unsigned preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v1.0.0-preview.1 release/*.dmg release/*.exe release/SHA256SUMS.txt --clobber
+          gh release edit v1.0.0-preview.1 --draft=false --prerelease --latest=false

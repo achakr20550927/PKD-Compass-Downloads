@@ -4,6 +4,13 @@ Standalone Mac and Windows installers for the local PKD Compass health journal.
 No health records are hosted in this repository. The desktop app stores an
 encrypted vault on your computer and does not need a website connection.
 
+Packaging inputs here are the compiled app files distributed inside the
+installers, plus the Electron shell and build configuration. Private backend
+and native-app sources are not published. Preview UI bundle source revision:
+`5423fcb` in the private application repository. Build via the manually
+triggered workflow; it uses this repository's scoped GitHub token, not a
+personal credential. No automatic updates are installed on users' computers.
+
 Website: https://pkdcompass.netlify.app/download
 
 ## Preview status
