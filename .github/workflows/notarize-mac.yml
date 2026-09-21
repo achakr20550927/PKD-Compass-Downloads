@@ -1,0 +1,125 @@
+name: Notarize signed Mac release
+on:
+  workflow_dispatch:
+    inputs:
+      arm64_submission:
+        description: Existing Apple silicon submission ID, only to resume this exact release
+        type: string
+        default: ''
+      x64_submission:
+        description: Existing Intel submission ID, only to resume this exact release
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: notarize-mac-1.0.0
+  cancel-in-progress: false
+jobs:
+  notarize:
+    if: github.ref == 'refs/heads/main' && github.repository == 'achakr20550927/PKD-Compass-Downloads'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+            submission_input: arm64_submission
+            sha256: 0310ae9d051f64d677492995c16da0ce82d9c176926fcea9731418424aeab8d6
+          - arch: x64
+            runner: macos-15-intel
+            submission_input: x64_submission
+            sha256: 72d175a68c8387fe4c9c2067f50398d568639cb2e2f7f4148f1a0a367c27c965
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      DMG: PKD-Compass-1.0.0-mac-${{ matrix.arch }}.dmg
+    steps:
+      - name: Download exact locally signed installer from draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ matrix.sha256 }}
+        run: |
+          set -euo pipefail
+          gh release download v1.0.0-mac --repo "$GITHUB_REPOSITORY" --pattern "$DMG"
+          printf '%s  %s\n' "$EXPECTED_SHA" "$DMG" | shasum -a 256 -c -
+          codesign --verify --verbose=2 "$DMG"
+          codesign -dv --verbose=4 "$DMG" 2>&1 | grep -F 'TeamIdentifier=3ALPX54S5P'
+          codesign -dv --verbose=4 "$DMG" 2>&1 | grep -F 'Authority=Developer ID Application: RAGHAV V CHAKRAVARTHY (3ALPX54S5P)'
+      - name: Submit to Apple and require acceptance
+        env:
+          APPLE_ID: ${{ vars.APPLE_NOTARY_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+          RESUME_ID: ${{ inputs[matrix.submission_input] }}
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_ID"
+          test -n "$APPLE_PASSWORD"
+          mkdir -p logs
+          if [ -n "$RESUME_ID" ]; then
+            [[ "$RESUME_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+            id="$RESUME_ID"
+          else
+            xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id 3ALPX54S5P --no-wait --output-format json > logs/submission.json
+            id=$(jq -er .id logs/submission.json)
+          fi
+          printf 'Apple submission: %s\n' "$id" >> "$GITHUB_STEP_SUMMARY"
+          xcrun notarytool wait "$id" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id 3ALPX54S5P --timeout 25m --output-format json > logs/result.json
+          xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id 3ALPX54S5P logs/apple-log.json
+          jq -e '.status == "Accepted"' logs/result.json
+      - name: Staple and verify Gatekeeper
+        run: |
+          set -euo pipefail
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          codesign --verify --verbose=2 "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+          mkdir -p "$RUNNER_TEMP/pkd-mounted"
+          hdiutil attach "$DMG" -readonly -nobrowse -mountpoint "$RUNNER_TEMP/pkd-mounted"
+          trap 'hdiutil detach "$RUNNER_TEMP/pkd-mounted" || true' EXIT
+          app="$RUNNER_TEMP/pkd-mounted/PKD Compass.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv --verbose=4 "$app" 2>&1 | grep -F 'TeamIdentifier=3ALPX54S5P'
+          spctl --assess --type execute --verbose=2 "$app"
+          mkdir -p "$RUNNER_TEMP/pkd-installed"
+          ditto "$app" "$RUNNER_TEMP/pkd-installed/PKD Compass.app"
+          open "$RUNNER_TEMP/pkd-installed/PKD Compass.app"
+          sleep 10
+          pgrep -f "$RUNNER_TEMP/pkd-installed/PKD Compass.app/Contents/MacOS/PKD Compass"
+          printf 'Verified notarization, stapling, Gatekeeper, and native launch.\n' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-mac-${{ matrix.arch }}
+          path: '*.dmg'
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notarization-log-${{ matrix.arch }}
+          path: logs/*.json
+          if-no-files-found: ignore
+          retention-days: 14
+  stage:
+    needs: notarize
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: verified-mac-*
+          merge-multiple: true
+          path: verified
+      - name: Stage verified files, keep release private
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view v1.0.0-mac --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          cd verified
+          test -f PKD-Compass-1.0.0-mac-arm64.dmg
+          test -f PKD-Compass-1.0.0-mac-x64.dmg
+          sha256sum ./*.dmg > SHA256SUMS.txt
+          gh release upload v1.0.0-mac ./*.dmg SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          printf 'Both verified Mac installers staged. Release remains a draft pending final QA.\n' >> "$GITHUB_STEP_SUMMARY"
