@@ -18,6 +18,9 @@ concurrency:
 jobs:
   notarize:
     if: github.ref == 'refs/heads/main' && github.repository == 'achakr20550927/PKD-Compass-Downloads'
+    # GitHub only exposes draft releases to tokens with push access.
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
