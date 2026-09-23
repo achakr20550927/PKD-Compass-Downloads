@@ -13,7 +13,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: notarize-mac-1.0.0
+  group: notarize-mac-1.0.1
   cancel-in-progress: false
 jobs:
   notarize:
@@ -28,15 +28,15 @@ jobs:
           - arch: arm64
             runner: macos-15
             submission_input: arm64_submission
-            sha256: 0310ae9d051f64d677492995c16da0ce82d9c176926fcea9731418424aeab8d6
+            sha256: 81043c9ac9f0b76e838ff4dc57a4c1cff9b67455b6c5facef789b6d15543f109
           - arch: x64
             runner: macos-15-intel
             submission_input: x64_submission
-            sha256: 72d175a68c8387fe4c9c2067f50398d568639cb2e2f7f4148f1a0a367c27c965
+            sha256: aafe57ed75e7662f2565c12a6ddd6a850dd8a38c29f5e32f84682b1cef1f0d03
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
-      DMG: PKD-Compass-1.0.0-mac-${{ matrix.arch }}.dmg
+      DMG: PKD-Compass-1.0.1-mac-${{ matrix.arch }}.dmg
     steps:
       - name: Download exact locally signed installer from draft
         env:
@@ -44,7 +44,7 @@ jobs:
           EXPECTED_SHA: ${{ matrix.sha256 }}
         run: |
           set -euo pipefail
-          gh release download v1.0.0-mac --repo "$GITHUB_REPOSITORY" --pattern "$DMG"
+          gh release download v1.0.1-mac --repo "$GITHUB_REPOSITORY" --pattern "$DMG"
           printf '%s  %s\n' "$EXPECTED_SHA" "$DMG" | shasum -a 256 -c -
           codesign --verify --verbose=2 "$DMG"
           codesign -dv --verbose=4 "$DMG" 2>&1 | grep -F 'TeamIdentifier=3ALPX54S5P'
@@ -119,10 +119,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$(gh release view v1.0.0-mac --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          test "$(gh release view v1.0.1-mac --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
           cd verified
-          test -f PKD-Compass-1.0.0-mac-arm64.dmg
-          test -f PKD-Compass-1.0.0-mac-x64.dmg
+          test -f PKD-Compass-1.0.1-mac-arm64.dmg
+          test -f PKD-Compass-1.0.1-mac-x64.dmg
           sha256sum ./*.dmg > SHA256SUMS.txt
-          gh release upload v1.0.0-mac ./*.dmg SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload v1.0.1-mac ./*.dmg SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
           printf 'Both verified Mac installers staged. Release remains a draft pending final QA.\n' >> "$GITHUB_STEP_SUMMARY"

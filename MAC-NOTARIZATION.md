@@ -1,7 +1,7 @@
 # Mac notarization
 
 The manually dispatched `notarize-mac.yml` workflow notarizes already-signed
-1.0.0 DMGs. It does not receive or use the Developer ID private key. It is
+1.0.1 DMGs. It does not receive or use the Developer ID private key. It is
 restricted to this repository's main branch and checks the exact input hashes
 and signing team before submitting anything to Apple.
 
